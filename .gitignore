@@ -1,0 +1,17 @@
+*.log
+*.log.lock
+*.axf
+*.html
+*.d
+*.o
+*.iex
+*.sct
+*.dep
+*.lnp
+*.htm
+*.hex
+*.scvd
+/MDK-ARM/AD9833/
+/MDK-ARM/AD9833.uvguix.*
+/MDK-ARM/*.yml
+/MDK-ARM/*.uvoptx
