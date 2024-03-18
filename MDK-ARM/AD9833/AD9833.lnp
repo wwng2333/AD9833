@@ -1,0 +1,24 @@
+--cpu Cortex-M0+
+"ad9833\startup_stm32g030xx.o"
+"ad9833\main.o"
+"ad9833\gpio.o"
+"ad9833\adc.o"
+"ad9833\i2c.o"
+"ad9833\spi.o"
+"ad9833\tim.o"
+"ad9833\stm32g0xx_it.o"
+"ad9833\stm32g0xx_ll_utils.o"
+"ad9833\stm32g0xx_ll_exti.o"
+"ad9833\stm32g0xx_ll_gpio.o"
+"ad9833\stm32g0xx_ll_adc.o"
+"ad9833\stm32g0xx_ll_dma.o"
+"ad9833\stm32g0xx_ll_rcc.o"
+"ad9833\stm32g0xx_ll_i2c.o"
+"ad9833\stm32g0xx_ll_spi.o"
+"ad9833\stm32g0xx_ll_pwr.o"
+"ad9833\stm32g0xx_ll_tim.o"
+"ad9833\system_stm32g0xx.o"
+--strict --scatter "AD9833\AD9833.sct"
+--summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
+--info sizes --info totals --info unused --info veneers
+--list "AD9833.map" -o AD9833\AD9833.axf
