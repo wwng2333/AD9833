@@ -28,6 +28,7 @@
 /* USER CODE BEGIN Includes */
 #include "u8g2.h"
 #include "oled_driver.h"
+#include "stdio.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -51,13 +52,18 @@
 
 /* USER CODE BEGIN PV */
 static u8g2_t u8g2;
+char sprintf_tmp[16];
+uint32_t AD9833_freq = 17000000;
+uint16_t ra_adc;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
+void Ra_ADC_Read(void);
 void AD9833_Write(uint16_t dat);
-void AD9833_WaveSeting(double Freq,unsigned int Freq_SFR,unsigned int WaveMode,unsigned int Phase);
+void AD9833_FreqSet(uint16_t Freq);
+void AD9833_WaveSet(double Freq,unsigned int Freq_SFR,unsigned int WaveMode,unsigned int Phase);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -99,27 +105,35 @@ int main(void)
   MX_I2C1_Init();
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
+	Activate_ADC();
 	u8g2_Setup_ssd1306_i2c_128x64_noname_f(&u8g2, U8G2_R0, u8x8_byte_hw_i2c, u8x8_gpio_and_delay_hw);
 	u8g2_InitDisplay(&u8g2);
 	u8g2_SetPowerSave(&u8g2, 0);
 
-	AD9833_WaveSeting(1700000, 0, SQU_WAVE, 0);
+	AD9833_WaveSet(AD9833_freq, 0, SQU_WAVE, 0);
 	//AD9833_Write(0x01C0); //Sleep
 	
-	LL_TIM_EnableAllOutputs(TIM1);
-	LL_TIM_CC_EnableChannel(TIM1, LL_TIM_CHANNEL_CH1);
-	LL_TIM_EnableCounter(TIM1);
+	//LL_TIM_EnableAllOutputs(TIM1);
+	//LL_TIM_CC_EnableChannel(TIM1, LL_TIM_CHANNEL_CH1);
+	//LL_TIM_EnableCounter(TIM1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+		Ra_ADC_Read();
 		u8g2_FirstPage(&u8g2);
 		do
     {
-			draw(&u8g2);
+			u8g2_SetFontMode(&u8g2, 1);  // Transparent
+			u8g2_SetFontDirection(&u8g2, 0);
+			u8g2_SetFont(&u8g2, u8g2_font_9x15_te);
+			u8g2_DrawStr(&u8g2, 0, 10, "Freq:");
+			sprintf(sprintf_tmp, "%uHz", AD9833_freq);
+			u8g2_DrawStr(&u8g2, 45, 10, sprintf_tmp);
     } while (u8g2_NextPage(&u8g2));
+		LL_mDelay(50);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -174,6 +188,32 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+void Ra_ADC_Read(void)
+{
+	uint8_t count;
+	uint16_t add = 0, temp = 0;
+	LL_ADC_Disable(ADC1);
+	LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_1);
+	LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_1, LL_ADC_SAMPLINGTIME_160CYCLES_5);
+	LL_ADC_Enable(ADC1);
+	for(count = 0; count < 10; count++)
+	{
+		LL_ADC_REG_StartConversion(ADC1);
+		while(LL_ADC_IsActiveFlag_EOC(ADC1) == RESET)
+		{
+			;
+		}
+		temp = LL_ADC_REG_ReadConversionData12(ADC1);
+		LL_ADC_ClearFlag_EOC(ADC1);
+		add += temp;
+	}
+	add /= 10;
+	ra_adc = __LL_ADC_CALC_DATA_TO_VOLTAGE(3300, add, LL_ADC_RESOLUTION_12B);
+	AD9833_freq = 1680000 + ra_adc*15;
+	AD9833_WaveSet(AD9833_freq, 0, SQU_WAVE, 0);
+}
+
 void AD9833_Write(uint16_t dat)
 {
 	LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_7);
@@ -183,66 +223,71 @@ void AD9833_Write(uint16_t dat)
 	LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_7);
 }
 
-/*
-*********************************************************************************************************
-*	�? �? �?: AD9833_WaveSeting
-*	功能说明: 向SPI总线发�??16个bit数据
-*	�?    �?: 1.Freq: 频率�?, 0.1 hz - 12Mhz
-			  2.Freq_SFR: 0 �? 1
-			  3.WaveMode: TRI_WAVE(三角�?),SIN_WAVE(正弦�?),SQU_WAVE(方波)
-			  4.Phase : 波形的初相位
-*	�? �? �?: �?
-*********************************************************************************************************
-*/ 
-void AD9833_WaveSeting(double Freq,unsigned int Freq_SFR,unsigned int WaveMode,unsigned int Phase )
+void AD9833_FreqSet(uint16_t Freq)
+{
+	int frequence_LSB,frequence_MSB;
+	double   frequence_mid,frequence_DATA;
+	long int frequence_hex;
+	
+	frequence_mid=268435456/25;
+	frequence_DATA=Freq;
+	frequence_DATA=frequence_DATA/1000000;
+	frequence_DATA=frequence_DATA*frequence_mid;
+	frequence_hex=frequence_DATA;
+	frequence_LSB=frequence_hex;
+	frequence_LSB=frequence_LSB&0x3fff;
+	frequence_MSB=frequence_hex>>14;
+	frequence_MSB=frequence_MSB&0x3fff;
+	frequence_LSB=frequence_LSB|0x4000;
+	frequence_MSB=frequence_MSB|0x4000;
+	AD9833_Write(frequence_LSB);
+	AD9833_Write(frequence_MSB);
+	AD9833_Write(0);
+}
+
+void AD9833_WaveSet(double Freq,unsigned int Freq_SFR,unsigned int WaveMode,unsigned int Phase )
 {
 
 		int frequence_LSB,frequence_MSB,Phs_data;
 		double   frequence_mid,frequence_DATA;
 		long int frequence_hex;
 
-		/*********************************计算频率�?16进制�?***********************************/
-		frequence_mid=268435456/25;//适合25M晶振
-		//如果时钟频率不为25MHZ，修改该处的频率值，单位MHz ，AD9833�?大支�?25MHz
+		frequence_mid=268435456/25;//For 25Mhz
 		frequence_DATA=Freq;
 		frequence_DATA=frequence_DATA/1000000;
 		frequence_DATA=frequence_DATA*frequence_mid;
-		frequence_hex=frequence_DATA;  //这个frequence_hex的�?�是32位的�?个很大的数字，需要拆分成两个14位进行处理；
-		frequence_LSB=frequence_hex; //frequence_hex�?16位�?�给frequence_LSB
-		frequence_LSB=frequence_LSB&0x3fff;//去除�?高两位，16位数换去掉高位后变成�?14�?
-		frequence_MSB=frequence_hex>>14; //frequence_hex�?16位�?�给frequence_HSB
-		frequence_MSB=frequence_MSB&0x3fff;//去除�?高两位，16位数换去掉高位后变成�?14�?
+		frequence_hex=frequence_DATA;
+		frequence_LSB=frequence_hex;
+		frequence_LSB=frequence_LSB&0x3fff;
+		frequence_MSB=frequence_hex>>14;
+		frequence_MSB=frequence_MSB&0x3fff;
 
-		Phs_data=Phase|0xC000;	//相位�?
-		AD9833_Write(0x0100); //复位AD9833,即RESET位为1
-		AD9833_Write(0x2100); //选择数据�?次写入，B28位和RESET位为1
+		Phs_data=Phase|0xC000;	//Phase
+		AD9833_Write(0x0100); //Reset AD9833
+		AD9833_Write(0x2100); //Set B28 and RESET to 1
 
-		if(Freq_SFR==0)				  //把数据设置到设置频率寄存�?0
+		if(Freq_SFR==0)				  //Set freq to Freq_SFR_0
 		{
 		 	frequence_LSB=frequence_LSB|0x4000;
 		 	frequence_MSB=frequence_MSB|0x4000;
-			 //使用频率寄存�?0输出波形
-			AD9833_Write(frequence_LSB); //L14，�?�择频率寄存�?0的低14位数据输�?
-			AD9833_Write(frequence_MSB); //H14 频率寄存器的�?14位数据输�?
-			AD9833_Write(Phs_data);	//设置相位
-			//AD9833_Write(0x2000); /**设置FSELECT位为0，芯片进入工作状�?,频率寄存�?0输出波形**/
+			AD9833_Write(frequence_LSB);
+			AD9833_Write(frequence_MSB);
+			AD9833_Write(Phs_data);
 	    }
-		if(Freq_SFR==1)				//把数据设置到设置频率寄存�?1
+		if(Freq_SFR==1)
 		{
 			 frequence_LSB=frequence_LSB|0x8000;
 			 frequence_MSB=frequence_MSB|0x8000;
-			//使用频率寄存�?1输出波形
-			AD9833_Write(frequence_LSB); //L14，�?�择频率寄存�?1的低14位输�?
-			AD9833_Write(frequence_MSB); //H14 频率寄存�?1�?
-			AD9833_Write(Phs_data);	//设置相位
-			//AD9833_Write(0x2800); /**设置FSELECT位为0，设置FSELECT位为1，即使用频率寄存�?1的�?�，芯片进入工作状�??,频率寄存�?1输出波形**/
+			AD9833_Write(frequence_LSB);
+			AD9833_Write(frequence_MSB);
+			AD9833_Write(Phs_data);
 		}
 
-		if(WaveMode==TRI_WAVE) //输出三角波波�?
+		if(WaveMode==TRI_WAVE)
 		 	AD9833_Write(0x2002); 
-		if(WaveMode==SQU_WAVE)	//输出方波波形
+		if(WaveMode==SQU_WAVE)
 			AD9833_Write(0x2028); 
-		if(WaveMode==SIN_WAVE)	//输出正弦波形
+		if(WaveMode==SIN_WAVE)
 			AD9833_Write(0x2000); 
 
 }

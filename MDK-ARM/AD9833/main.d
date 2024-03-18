@@ -47,4 +47,5 @@ ad9833/main.o: ..\Core\Src\main.c ..\Core\Inc\main.h \
   ..\Core\Src\u8g2\u8x8.h \
   C:\Keil_ARM\ARM\ARMCLANG\Bin\..\include\stdarg.h \
   C:\Keil_ARM\ARM\ARMCLANG\Bin\..\include\limits.h \
-  ..\Core\Inc\oled_driver.h
+  ..\Core\Inc\oled_driver.h \
+  C:\Keil_ARM\ARM\ARMCLANG\Bin\..\include\stdio.h
