@@ -26,7 +26,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "u8g2.h"
+#include "oled_driver.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -49,7 +50,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+static u8g2_t u8g2;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -77,11 +78,7 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_SYSCFG);
-  LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_PWR);
-
-  /* SysTick_IRQn interrupt configuration */
-  NVIC_SetPriority(SysTick_IRQn, 3);
+  HAL_Init();
 
   /* USER CODE BEGIN Init */
 
@@ -102,6 +99,10 @@ int main(void)
   MX_I2C1_Init();
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
+	u8g2_Setup_ssd1306_i2c_128x64_noname_f(&u8g2, U8G2_R0, u8x8_byte_hw_i2c, u8x8_gpio_and_delay_hw);
+	u8g2_InitDisplay(&u8g2);
+	u8g2_SetPowerSave(&u8g2, 0);
+
 	AD9833_WaveSeting(1700000, 0, SQU_WAVE, 0);
 	//AD9833_Write(0x01C0); //Sleep
 	
@@ -114,6 +115,11 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+		u8g2_FirstPage(&u8g2);
+		do
+    {
+			draw(&u8g2);
+    } while (u8g2_NextPage(&u8g2));
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -157,11 +163,14 @@ void SystemClock_Config(void)
 
   /* Set APB1 prescaler*/
   LL_RCC_SetAPB1Prescaler(LL_RCC_APB1_DIV_1);
-
-  LL_Init1msTick(64000000);
-
   /* Update CMSIS variable (which can be updated also through SystemCoreClockUpdate function) */
   LL_SetSystemCoreClock(64000000);
+
+   /* Update the time base */
+  if (HAL_InitTick (TICK_INT_PRIORITY) != HAL_OK)
+  {
+    Error_Handler();
+  }
 }
 
 /* USER CODE BEGIN 4 */
