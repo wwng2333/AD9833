@@ -83,6 +83,10 @@ void MX_TIM3_Init(void)
   GPIO_InitStruct.Alternate = LL_GPIO_AF_1;
   LL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+  /* TIM3 interrupt Init */
+  NVIC_SetPriority(TIM3_IRQn, 0);
+  NVIC_EnableIRQ(TIM3_IRQn);
+
   /* USER CODE BEGIN TIM3_Init 1 */
 
   /* USER CODE END TIM3_Init 1 */

@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "adc.h"
+#include "dma.h"
 #include "i2c.h"
 #include "spi.h"
 #include "tim.h"
@@ -45,7 +46,7 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
+#define BASE_FREQ 1700000
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -53,16 +54,19 @@
 /* USER CODE BEGIN PV */
 static u8g2_t u8g2;
 char sprintf_tmp[16];
-uint32_t AD9833_freq = 17000000;
-uint16_t ra_adc;
+uint32_t AD9833_freq = BASE_FREQ;
+uint16_t ra_adc, cur_adc;
+uint16_t adc_buf[2];
+uint16_t PWM1_T_Count, PWM1_D_Count;
+float PWM1_Duty, PWM1_Freq, FlowRate;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 void Ra_ADC_Read(void);
+void Cur_ADC_Read(void);
 void AD9833_Write(uint16_t dat);
-void AD9833_FreqSet(uint16_t Freq);
 void AD9833_WaveSet(double Freq,unsigned int Freq_SFR,unsigned int WaveMode,unsigned int Phase);
 /* USER CODE END PFP */
 
@@ -99,16 +103,24 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_TIM1_Init();
   MX_SPI1_Init();
   MX_TIM3_Init();
   MX_I2C1_Init();
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
-	Activate_ADC();
+	HAL_ADCEx_Calibration_Start(&hadc1);
+	HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_buf, 2);
 	u8g2_Setup_ssd1306_i2c_128x64_noname_f(&u8g2, U8G2_R0, u8x8_byte_hw_i2c, u8x8_gpio_and_delay_hw);
 	u8g2_InitDisplay(&u8g2);
 	u8g2_SetPowerSave(&u8g2, 0);
+
+	LL_TIM_CC_EnableChannel(TIM3, LL_TIM_CHANNEL_CH1);
+	LL_TIM_CC_EnableChannel(TIM3, LL_TIM_CHANNEL_CH2);
+	LL_TIM_EnableCounter(TIM3);
+	LL_TIM_EnableIT_CC1(TIM3);
+	LL_TIM_EnableIT_CC2(TIM3);
 
 	AD9833_WaveSet(AD9833_freq, 0, SQU_WAVE, 0);
 	//AD9833_Write(0x01C0); //Sleep
@@ -122,6 +134,8 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+		Cur_ADC_Read();
+		HAL_Delay(10);
 		Ra_ADC_Read();
 		u8g2_FirstPage(&u8g2);
 		do
@@ -132,6 +146,13 @@ int main(void)
 			u8g2_DrawStr(&u8g2, 0, 10, "Freq:");
 			sprintf(sprintf_tmp, "%uHz", AD9833_freq);
 			u8g2_DrawStr(&u8g2, 45, 10, sprintf_tmp);
+			u8g2_DrawStr(&u8g2, 0, 22, "Flow:");
+			sprintf(sprintf_tmp, "%.2fL/min", FlowRate);
+			u8g2_DrawStr(&u8g2, 45, 22, sprintf_tmp);
+			u8g2_DrawStr(&u8g2, 0, 34, "Current:");
+			sprintf(sprintf_tmp, "%dmA", cur_adc);
+			u8g2_DrawStr(&u8g2, 72, 34, sprintf_tmp);
+
     } while (u8g2_NextPage(&u8g2));
 		LL_mDelay(50);
     /* USER CODE END WHILE */
@@ -191,27 +212,14 @@ void SystemClock_Config(void)
 
 void Ra_ADC_Read(void)
 {
-	uint8_t count;
-	uint16_t add = 0, temp = 0;
-	LL_ADC_Disable(ADC1);
-	LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_1);
-	LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_1, LL_ADC_SAMPLINGTIME_160CYCLES_5);
-	LL_ADC_Enable(ADC1);
-	for(count = 0; count < 10; count++)
-	{
-		LL_ADC_REG_StartConversion(ADC1);
-		while(LL_ADC_IsActiveFlag_EOC(ADC1) == RESET)
-		{
-			;
-		}
-		temp = LL_ADC_REG_ReadConversionData12(ADC1);
-		LL_ADC_ClearFlag_EOC(ADC1);
-		add += temp;
-	}
-	add /= 10;
-	ra_adc = __LL_ADC_CALC_DATA_TO_VOLTAGE(3300, add, LL_ADC_RESOLUTION_12B);
-	AD9833_freq = 1680000 + ra_adc*15;
+	ra_adc = __LL_ADC_CALC_DATA_TO_VOLTAGE(3300, adc_buf[0], LL_ADC_RESOLUTION_12B);
+	AD9833_freq = (BASE_FREQ - 30000) + ra_adc*20;
 	AD9833_WaveSet(AD9833_freq, 0, SQU_WAVE, 0);
+}
+
+void Cur_ADC_Read(void)
+{
+	cur_adc = __LL_ADC_CALC_DATA_TO_VOLTAGE(3300, adc_buf[1], LL_ADC_RESOLUTION_12B) * 4;
 }
 
 void AD9833_Write(uint16_t dat)
@@ -221,28 +229,6 @@ void AD9833_Write(uint16_t dat)
 	LL_SPI_TransmitData16(SPI1, dat);
 	while(LL_SPI_IsActiveFlag_BSY(SPI1));
 	LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_7);
-}
-
-void AD9833_FreqSet(uint16_t Freq)
-{
-	int frequence_LSB,frequence_MSB;
-	double   frequence_mid,frequence_DATA;
-	long int frequence_hex;
-	
-	frequence_mid=268435456/25;
-	frequence_DATA=Freq;
-	frequence_DATA=frequence_DATA/1000000;
-	frequence_DATA=frequence_DATA*frequence_mid;
-	frequence_hex=frequence_DATA;
-	frequence_LSB=frequence_hex;
-	frequence_LSB=frequence_LSB&0x3fff;
-	frequence_MSB=frequence_hex>>14;
-	frequence_MSB=frequence_MSB&0x3fff;
-	frequence_LSB=frequence_LSB|0x4000;
-	frequence_MSB=frequence_MSB|0x4000;
-	AD9833_Write(frequence_LSB);
-	AD9833_Write(frequence_MSB);
-	AD9833_Write(0);
 }
 
 void AD9833_WaveSet(double Freq,unsigned int Freq_SFR,unsigned int WaveMode,unsigned int Phase )

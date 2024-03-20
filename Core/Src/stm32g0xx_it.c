@@ -41,7 +41,8 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
-
+extern uint16_t PWM1_T_Count, PWM1_D_Count;
+extern float PWM1_Duty, PWM1_Freq, FlowRate;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -55,7 +56,7 @@
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
-
+extern DMA_HandleTypeDef hdma_adc1;
 /* USER CODE BEGIN EV */
 
 /* USER CODE END EV */
@@ -139,6 +140,45 @@ void SysTick_Handler(void)
 /* For the available peripheral interrupt handler names,                      */
 /* please refer to the startup file (startup_stm32g0xx.s).                    */
 /******************************************************************************/
+
+/**
+  * @brief This function handles DMA1 channel 1 interrupt.
+  */
+void DMA1_Channel1_IRQHandler(void)
+{
+  /* USER CODE BEGIN DMA1_Channel1_IRQn 0 */
+
+  /* USER CODE END DMA1_Channel1_IRQn 0 */
+  HAL_DMA_IRQHandler(&hdma_adc1);
+  /* USER CODE BEGIN DMA1_Channel1_IRQn 1 */
+
+  /* USER CODE END DMA1_Channel1_IRQn 1 */
+}
+
+/**
+  * @brief This function handles TIM3 global interrupt.
+  */
+void TIM3_IRQHandler(void)
+{
+  /* USER CODE BEGIN TIM3_IRQn 0 */
+	if(LL_TIM_IsActiveFlag_CC1(TIM3))
+	{
+		LL_GPIO_TogglePin(GPIOA, LL_GPIO_PIN_2);
+		PWM1_T_Count = LL_TIM_IC_GetCaptureCH1(TIM3) + 1;
+		PWM1_Duty = (float)PWM1_D_Count / PWM1_T_Count;
+		PWM1_Freq = (float)1000000 / PWM1_T_Count;
+		FlowRate = PWM1_Freq / 36;
+	}
+	else if(LL_TIM_IsActiveFlag_CC2(TIM3))
+	{
+		//printf("TIM3 CC2 IRQ!\n");
+		PWM1_D_Count = LL_TIM_IC_GetCaptureCH2(TIM3) + 1;
+	}
+  /* USER CODE END TIM3_IRQn 0 */
+  /* USER CODE BEGIN TIM3_IRQn 1 */
+
+  /* USER CODE END TIM3_IRQn 1 */
+}
 
 /* USER CODE BEGIN 1 */
 
